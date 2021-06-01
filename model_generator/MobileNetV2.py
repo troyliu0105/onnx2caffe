@@ -1,9 +1,11 @@
-import torch.nn as nn
 import math
-from torch.autograd import Variable
-import torch
-import torch.onnx as onnx
 import os
+
+import torch
+import torch.nn as nn
+import torch.onnx as onnx
+from torch.autograd import Variable
+
 
 def conv_bn(inp, oup, stride):
     return nn.Sequential(
@@ -81,7 +83,7 @@ class MobileNetV2(nn.Module):
                 input_channel = output_channel
         # building last several layers
         self.features.append(conv_1x1_bn(input_channel, self.last_channel))
-        self.features.append(nn.AvgPool2d(int(input_size/32)))
+        self.features.append(nn.AvgPool2d(int(input_size / 32)))
         # make it nn.Sequential
         self.features = nn.Sequential(*self.features)
 
@@ -114,19 +116,19 @@ class MobileNetV2(nn.Module):
                 m.weight.data.normal_(0, 0.01)
                 m.bias.data.zero_()
 
+
 def export(dir):
     dummy_input = Variable(torch.randn(1, 3, 224, 224))
     model = MobileNetV2()
     model.eval()
-    torch.save(model.state_dict(),os.path.join(dir,"MobileNetV2.pth"))
-    onnx.export(model, dummy_input,os.path.join(dir,"MobileNetV2.onnx"), verbose=True)
-
+    torch.save(model.state_dict(), os.path.join(dir, "MobileNetV2.pth"))
+    onnx.export(model, dummy_input, os.path.join(dir, "MobileNetV2.onnx"), verbose=True)
 
 
 def get_model_and_input(model_save_dir):
     model = MobileNetV2()
     model.cpu()
-    model_path = os.path.join(model_save_dir,'MobileNetV2.pth')
+    model_path = os.path.join(model_save_dir, 'MobileNetV2.pth')
     model.load_state_dict(torch.load(model_path))
     model.cpu()
     model.eval()
@@ -135,4 +137,4 @@ def get_model_and_input(model_save_dir):
     height = 224
     width = 224
     images = Variable(torch.ones(batch_size, channels, height, width))
-    return images,model
+    return images, model

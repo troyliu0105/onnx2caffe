@@ -1,9 +1,10 @@
 # import torchvision.models as models
-from torch import onnx
+import math
+import os
+
 import torch
 import torch.nn as nn
-import os
-import math
+from torch import onnx
 
 
 # model = models.resnet50(False)
@@ -160,8 +161,8 @@ def export(dir):
     model = resnet50()
     # model = load_network(model,os.path.join(file_dir,'..','model','pose_v02.pth'))
     model.eval()
-    torch.save(model.state_dict(),os.path.join(dir,"resnet50.pth"))
-    onnx.export(model, dummy_input,os.path.join(dir,"resnet50.onnx"), verbose=True)
+    torch.save(model.state_dict(), os.path.join(dir, "resnet50.pth"))
+    onnx.export(model, dummy_input, os.path.join(dir, "resnet50.onnx"), verbose=True)
 
 
 def get_model_and_input(model_save_dir=None):

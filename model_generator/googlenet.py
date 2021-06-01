@@ -1,12 +1,11 @@
 '''GoogLeNet with PyTorch.'''
+import os
+
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-from torchvision import datasets, transforms
-from torch.autograd import Variable
-import os
 import torch.onnx as onnx
+from torch.autograd import Variable
+
 
 class Inception(nn.Module):
     def __init__(self, in_planes, n1x1, n3x3red, n3x3, n5x5red, n5x5, pool_planes):
@@ -54,7 +53,7 @@ class Inception(nn.Module):
         y2 = self.b2(x)
         y3 = self.b3(x)
         y4 = self.b4(x)
-        return torch.cat([y1,y2,y3,y4], 1)
+        return torch.cat([y1, y2, y3, y4], 1)
 
 
 class GoogLeNet(nn.Module):
@@ -66,15 +65,15 @@ class GoogLeNet(nn.Module):
             nn.ReLU(True),
         )
 
-        self.a3 = Inception(192,  64,  96, 128, 16, 32, 32)
+        self.a3 = Inception(192, 64, 96, 128, 16, 32, 32)
         self.b3 = Inception(256, 128, 128, 192, 32, 96, 64)
 
         self.maxpool = nn.MaxPool2d(2, stride=2, padding=0)
 
-        self.a4 = Inception(480, 192,  96, 208, 16,  48,  64)
-        self.b4 = Inception(512, 160, 112, 224, 24,  64,  64)
-        self.c4 = Inception(512, 128, 128, 256, 24,  64,  64)
-        self.d4 = Inception(512, 112, 144, 288, 32,  64,  64)
+        self.a4 = Inception(480, 192, 96, 208, 16, 48, 64)
+        self.b4 = Inception(512, 160, 112, 224, 24, 64, 64)
+        self.c4 = Inception(512, 128, 128, 256, 24, 64, 64)
+        self.d4 = Inception(512, 112, 144, 288, 32, 64, 64)
         self.e4 = Inception(528, 256, 160, 320, 32, 128, 128)
 
         self.a5 = Inception(832, 256, 160, 320, 32, 128, 128)
@@ -101,6 +100,7 @@ class GoogLeNet(nn.Module):
         out = self.linear(out)
         return out
 
+
 def export(dir):
     file_path = os.path.realpath(__file__)
     file_dir = os.path.dirname(file_path)
@@ -108,13 +108,14 @@ def export(dir):
     model = GoogLeNet()
     # model = load_network(model,os.path.join(file_dir,'..','model','pose_v02.pth'))
     model.eval()
-    torch.save(model.state_dict(),os.path.join(dir,"googlenet.pth"))
-    onnx.export(model, dummy_input,os.path.join(dir,"googlenet.onnx"), verbose=True)
+    torch.save(model.state_dict(), os.path.join(dir, "googlenet.pth"))
+    onnx.export(model, dummy_input, os.path.join(dir, "googlenet.onnx"), verbose=True)
+
 
 def get_model_and_input(model_save_dir):
     model = GoogLeNet()
     model.cpu()
-    model_path = os.path.join(model_save_dir,'googlenet.pth')
+    model_path = os.path.join(model_save_dir, 'googlenet.pth')
     model.load_state_dict(torch.load(model_path))
     model.cpu()
     model.eval()
@@ -123,4 +124,4 @@ def get_model_and_input(model_save_dir):
     height = 32
     width = 32
     images = Variable(torch.ones(batch_size, channels, height, width))
-    return images,model
+    return images, model
