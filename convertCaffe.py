@@ -107,3 +107,4 @@ if __name__ == "__main__":
     caffemodel_path = sys.argv[3]
     graph = getGraph(onnx_path)
     convertToCaffe(graph, prototxt_path, caffemodel_path)
+    exit(0)

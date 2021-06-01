@@ -232,17 +232,24 @@ def _convert_pool(node, graph, err):
     else:
         return err.unsupported_op_configuration(node, "Unsupported pool type")
 
-    kernel_shape = node.attrs["kernel_shape"]
-    strides = node.attrs.get('strides', [1, 1])
-    pads = node.attrs.get('pads', [0, 0, 0, 0])
+    global_pooling = int(node.op_type.startswith("Global"))
+    if global_pooling == 0:
+        kernel_shape = node.attrs["kernel_shape"]
+        strides = node.attrs.get('strides', [1, 1])
+        pads = node.attrs.get('pads', [0, 0, 0, 0])
+        pooling_param = dict(pool=pool_type,
+                             kernel_h=kernel_shape[0],
+                             kernel_w=kernel_shape[1],
+                             stride_h=strides[0],
+                             stride_w=strides[1],
+                             pad_h=pads[0],
+                             pad_w=pads[1],
+                             global_pooling=global_pooling)
+    else:
+        pooling_param = dict(pool=pool_type,
+                             global_pooling=global_pooling)
 
-    layer = myf("Pooling", node_name, [input_name], [output_name], pooling_param=dict(pool=pool_type,
-                                                                                      kernel_h=kernel_shape[0],
-                                                                                      kernel_w=kernel_shape[1],
-                                                                                      stride_h=strides[0],
-                                                                                      stride_w=strides[1],
-                                                                                      pad_h=pads[0],
-                                                                                      pad_w=pads[1]))
+    layer = myf("Pooling", node_name, [input_name], [output_name], pooling_param=pooling_param)
     graph.channel_dims[output_name] = graph.channel_dims[input_name]
     return layer
 
@@ -269,7 +276,7 @@ def _convert_gemm(node, graph, err):
                                 "Weight tensor: {} not found in the graph initializer".format(weight_name, ))
         return
 
-    if node.attrs["broadcast"] != 1 or node.attrs["transB"] != 1:
+    if ("broadcast" in node.attrs and node.attrs["broadcast"] != 1) or node.attrs["transB"] != 1:
         return err.unsupported_op_configuration(node, "Gemm is supported only for inner_product layer")
 
     b = None
@@ -409,6 +416,7 @@ _ONNX_NODE_REGISTRY = {
     "Reshape": _convert_Reshape,
     "MaxPool": _convert_pool,
     "AveragePool": _convert_pool,
+    "GlobalAveragePool": _convert_pool,
     "Dropout": _convert_dropout,
     "Gemm": _convert_gemm,
     "Upsample": _convert_upsample,
