@@ -115,6 +115,9 @@ def _convert_concat(net, node, graph, err):
     pass
 
 
+def _convert_conv_slice(net, node, graph, err):
+    pass
+
 def _convert_conv_transpose(net, node, graph, err):
     weight_name = node.inputs[1]
     input_name = str(node.inputs[0])
@@ -156,4 +159,5 @@ _ONNX_NODE_REGISTRY = {
     "ConvTranspose": _convert_conv_transpose,
     "Sigmoid": _convert_sigmoid,
     "Flatten": _convert_Flatten,
+    "Slice": _convert_conv_slice,
 }
