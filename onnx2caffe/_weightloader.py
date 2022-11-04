@@ -111,12 +111,46 @@ def _convert_upsample(net, node, graph, err):
         # net.params[node_name][0].data[]
 
 
+def _convert_resize_opset11(net, node, graph, err):
+    mode = node.attrs["mode"]
+    node_name = node.name
+    if mode == "nearest":
+        caffe_params = net.params[node_name][0].data
+        weights = np.ones(caffe_params.shape).astype("float32")
+        np.copyto(net.params[node_name][0].data, weights, casting='same_kind')
+        # net.params[node_name][0].data[]
+    # else:
+    #     if net.layer_dict[node_name].type == "Deconvolution":
+    #         caffe_params = net.params[node_name][0].data
+    #         filter_size = net.params[node_name][0].data.shape[2]
+    #         bilinear_kernel = np.zeros([filter_size, filter_size], dtype=np.float32)
+    #         scale_factor = (filter_size + 1) // 2
+    #         scale_factor = (filter_size + 1) // 2
+    #         if filter_size % 2 == 1:
+    #             center = scale_factor - 1
+    #         else:
+    #             center = scale_factor - 0.5
+    #         for x in range(filter_size):
+    #             for y in range(filter_size):
+    #                 bilinear_kernel[x, y] = (1 - abs(x - center) / scale_factor) * \
+    #                                         (1 - abs(y - center) / scale_factor)
+    #         weights = np.ones(caffe_params.shape).astype("float32")
+    #         for i in range(caffe_params.shape[0]):
+    #             weights[:, :, i, i] = bilinear_kernel
+    #         np.copyto(net.params[node_name][0].data, weights, casting='same_kind')
+
+
 def _convert_concat(net, node, graph, err):
     pass
 
 
 def _convert_conv_slice(net, node, graph, err):
     pass
+
+
+def _convert_conv_split_opset11(net, node, graph, err):
+    pass
+
 
 def _convert_conv_transpose(net, node, graph, err):
     weight_name = node.inputs[1]
@@ -155,9 +189,12 @@ _ONNX_NODE_REGISTRY = {
     "Dropout": _convert_dropout,
     "Gemm": _convert_gemm,
     "Upsample": _convert_upsample,
+    # "Resize": _convert_resize_opset11,
+    "Resize": _convert_concat,
     "Concat": _convert_concat,
     "ConvTranspose": _convert_conv_transpose,
     "Sigmoid": _convert_sigmoid,
     "Flatten": _convert_Flatten,
     "Slice": _convert_conv_slice,
+    "Split": _convert_conv_split_opset11,
 }

@@ -299,7 +299,10 @@ def _convert_gemm(node, graph, err):
 
 
 def _convert_upsample(node, graph, err):
-    factor = int(node.attrs["height_scale"])
+    try:
+        factor = int(node.attrs["height_scale"])
+    except KeyError:
+        factor = int(node.input_tensors[node.inputs[-1]][2:].mean())
     node_name = node.name
     input_name = str(node.inputs[0])
     output_name = str(node.outputs[0])
@@ -333,6 +336,91 @@ def _convert_upsample(node, graph, err):
                         group=channels,
                         bias_term=False,
                     ))
+
+    graph.channel_dims[output_name] = graph.channel_dims[input_name]
+    return layer
+
+
+def _convert_resize_to_upsample_opset11(node, graph, err):
+    factor = int(node.input_tensors[node.inputs[-1]][2:].mean())
+    node_name = node.name
+    input_name = str(node.inputs[0])
+    output_name = str(node.outputs[0])
+    # input_shape = graph.shape_dict[input_name]
+    # channels = input_shape[1]
+    channels = graph.channel_dims[input_name]
+    pad = int(math.ceil((factor - 1) / 2.))
+    # mode = "bilinear"
+    node.attrs["mode"] = "nearest"
+    mode = node.attrs["mode"]
+    layer = myf("Upsample", node_name, [input_name], [output_name],
+                upsample_param=dict(
+                    scale=factor
+                ))
+    graph.channel_dims[output_name] = graph.channel_dims[input_name]
+    return layer
+
+def _convert_resize_opset11(node, graph, err):
+    factor = int(node.input_tensors[node.inputs[-1]][2:].mean())
+    node_name = node.name
+    input_name = str(node.inputs[0])
+    output_name = str(node.outputs[0])
+    # input_shape = graph.shape_dict[input_name]
+    # channels = input_shape[1]
+    channels = graph.channel_dims[input_name]
+    pad = int(math.ceil((factor - 1) / 2.))
+    # mode = "bilinear"
+    node.attrs["mode"] = "nearest"
+    mode = node.attrs["mode"]
+
+    # https://github.com/pytorch/pytorch/issues/6900
+    if mode == "bilinear":
+        if factor == 1:
+            layer = myf("Convolution", node_name, [input_name], [output_name],
+                        convolution_param=dict(
+                            num_output=channels,
+                            kernel_size=2 * factor - factor % 2,
+                            stride=factor,
+                            pad=pad,
+                            group=channels,
+                            bias_term=False,
+                            # weight_filler=dict(type="bilinear_upsampling")
+                            weight_filler=dict(type="bilinear")
+                        ))
+        else:
+            layer = myf("Deconvolution", node_name, [input_name], [output_name],
+                        convolution_param=dict(
+                            num_output=channels,
+                            kernel_size=2 * factor - factor % 2,
+                            stride=factor,
+                            pad=pad,
+                            group=channels,
+                            bias_term=False,
+                            # weight_filler=dict(type="bilinear_upsampling")
+                            weight_filler=dict(type="bilinear")
+                        ))
+    else:
+        if factor == 1:
+            layer = myf("Convolution", node_name, [input_name], [output_name],
+                        convolution_param=dict(
+                            num_output=channels,
+                            kernel_size=2 * factor - factor % 2,
+                            stride=factor,
+                            pad=pad,
+                            group=channels,
+                            bias_term=False,
+                            # weight_filler=dict(type="bilinear_upsampling")
+                            weight_filler=dict(type="bilinear")
+                        ))
+        else:
+            layer = myf("Deconvolution", node_name, [input_name], [output_name],
+                        convolution_param=dict(
+                            num_output=channels,
+                            kernel_size=factor,
+                            stride=factor,
+                            group=channels,
+                            bias_term=False,
+                        ))
 
     graph.channel_dims[output_name] = graph.channel_dims[input_name]
     return layer
@@ -407,7 +495,6 @@ def _convert_conv_transpose(node, graph, err):
     #         bias_term=bias_term))
 
 def _convert_conv_slice(node, graph, err):
-
     input_name = str(node.inputs[0])
     output_name = str(node.outputs[0])
     node_name = node.name
@@ -453,6 +540,94 @@ def _convert_conv_slice(node, graph, err):
     graph.channel_dims[output_name_list[-1]] = channels - valid_pts[-1]
     return layer
 
+
+def _convert_conv_slice_opset11(node, graph, err):
+    input_name = str(node.inputs[0])
+    output_name = str(node.outputs[0])
+    node_name = node.name
+    # axes = node.attrs.get('axes', [])
+    names = node.inputs[1:]
+    starts_name = names[0]
+    ends_name = names[1]
+    axes_name = names[2]
+    steps_name = names[3]
+
+    channels = graph.channel_dims[input_name]
+
+    starts = node.input_tensors[starts_name]
+    ends = node.input_tensors[ends_name]
+    axes = node.input_tensors[axes_name]
+
+    if len(axes) != 1:
+        return err.unsupported_op_configuration(node, "Only single axis Slice is supported now")
+
+    start = starts[0]
+    end = ends[0]
+    valid_pts = []
+    for pt in [start, end]:
+        if pt is not None and pt != 0 and pt != channels:
+            valid_pts.append(pt)
+
+    if start == 0:
+        output_name_list = [output_name, str(output_name) + "slice_another"]
+        output_channels = {
+            output_name_list[0]: valid_pts[0],
+            output_name_list[1]: channels - valid_pts[0]
+        }
+    elif len(valid_pts) == 1:
+        output_name_list = [str(output_name) + "slice_another", output_name]
+        output_channels = {
+            output_name_list[0]: valid_pts[0],
+            output_name_list[1]: channels - valid_pts[0]
+        }
+    elif len(valid_pts) == 2:
+        output_name_list = [str(output_name) + "slice_another", output_name, str(output_name) + "slice_another_end"]
+        output_channels = {
+            output_name_list[0]: valid_pts[0],
+            output_name_list[1]: valid_pts[1] - valid_pts[0],
+            output_name_list[2]: channels - valid_pts[1]
+        }
+        # output_name_list = [output_name, str(output_name) + "slice_another_end"]
+
+    if len(axes) == 0:
+        axes = range(len(starts))
+    if len(axes) == 1:
+        if axes[0] == 0:
+            axes = 'batch'
+        elif axes[0] == 1:
+            axis = 'channel'
+        elif axes[0] == 2:
+            axis = 'height'
+        elif axes[0] == 3:
+            axis = 'width'
+        else:
+            return err.unsupported_op_configuration(node, "Slice is supported only along H, W or C dimensions")
+    else:
+        return err.unsupported_op_configuration(node,
+                                                "Slice is supported only along one axis for 3D or 4D Tensors")
+
+    layer = myf('Slice', node_name, [input_name], output_name_list, slice_dim=axes[0], slice_point=valid_pts)
+    # graph.channel_dims[output_name_list[0]] = valid_pts[0] if len(valid_pts) == 1 else valid_pts[1] - valid_pts[0]
+    # graph.channel_dims[output_name_list[-1]] = channels - valid_pts[-1]
+    for k, v in output_channels.items():
+        graph.channel_dims[k] = v
+    return layer
+
+
+def _convert_conv_split_opset11(node, graph, err):
+    node_name = node.name
+    input_name = node.inputs[0]
+    output_name_list = node.outputs
+    attrs = node.attrs
+    axis = attrs["axis"]
+    splits = attrs["split"]
+    valid_pts = [a * b for a, b in zip(splits, list(range(1, len(splits) + 1)))][:-1]
+    layer = myf('Slice', node_name, [input_name], output_name_list, slice_dim=axis, slice_point=valid_pts)
+    for output_name, output_channels in zip(output_name_list, splits):
+        graph.channel_dims[output_name] = output_channels
+    return layer
+
+
 _ONNX_NODE_REGISTRY = {
     "Conv": _convert_conv,
     "Relu": _convert_relu,
@@ -465,10 +640,15 @@ _ONNX_NODE_REGISTRY = {
     "GlobalAveragePool": _convert_pool,
     "Dropout": _convert_dropout,
     "Gemm": _convert_gemm,
-    "Upsample": _convert_upsample,
+    # "Upsample": _convert_upsample,
+    "Upsample": _convert_resize_to_upsample_opset11,
+    # "Resize": _convert_resize_opset11,
+    "Resize": _convert_resize_to_upsample_opset11,
     "Concat": _convert_concat,
     "ConvTranspose": _convert_conv_transpose,
     "Sigmoid": _convert_sigmoid,
     "Flatten": _convert_Flatten,
     "Slice": _convert_conv_slice,
+    # "Slice": _convert_conv_slice_opset11,
+    "Split": _convert_conv_split_opset11,
 }
